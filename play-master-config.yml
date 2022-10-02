@@ -1,0 +1,34 @@
+- hosts: swarm_manager
+  any_errors_fatal: true
+  become: no
+  gather_facts: no
+  vars_files:
+      - vars.yaml
+
+  tasks:
+    - name: Get container ids from worker nodes
+      shell: docker ps | grep master | cut -d ' ' -f 1
+      register: out
+      failed_when: "not(out.rc == 0 or 'This node is already part of a swarm' in out.stderr)"
+
+    - name: Show container ids
+      debug:
+        msg: "{{out.stdout}}"
+
+    - name: Install apk dependencies on remote containers
+      become: yes
+      shell: docker exec {{out.stdout}} /sbin/apk --update add {{ apk_deps | join(' ') }}
+      register: cmdout
+
+    - name: Debug container id
+      debug:
+        msg: "{{cmdout.stdout}}"
+
+    - name: Install pip packages on remote containers
+      become: yes
+      shell: docker exec {{out.stdout}} python3 -m pip install --upgrade {{ pip_deps | join(' ') }}
+      register: cmdout
+
+    - name: Debug container id
+      debug:
+        msg: "{{cmdout.results|json_query('[*].stdout')}}"

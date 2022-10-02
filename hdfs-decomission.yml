@@ -1,0 +1,39 @@
+#!/usr/local/bin/ansible-playbook
+- hosts: gluster
+  become: yes
+  any_errors_fatal: true
+    
+  vars_files:
+    - vars.yaml
+
+  tasks:
+
+    - name: Umount GlusterFS
+      mount:
+        path: "{{ gluster_mount_dir }}"
+        state: unmounted
+
+    - name: Stop GlusterFS service
+      systemd:
+        name: glusterd
+        state: stopped
+        force: yes
+        masked: no
+      ignore_errors: yes
+
+    - name: Uninstall glusterfs
+      apt:        
+        state: absent
+        autoremove: yes
+        pkg:
+          - glusterfs-client
+          - glustefs-server
+          - glusterfs-common
+
+
+    - name: Remove GlusterFS data dirs
+      file: "path={{ item }} state=absent"
+      with_items:
+        - "{{ gluster_brick_dir }}"
+        - "{{ gluster_mount_dir }}"
+        - "{{ gluster_metadata_dir }}"

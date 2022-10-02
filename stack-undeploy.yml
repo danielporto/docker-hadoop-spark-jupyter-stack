@@ -1,0 +1,58 @@
+#! /usr/local/bin/ansible-playbook
+
+- hosts: swarm_manager,swarm_workers
+  any_errors_fatal: true
+  gather_facts: no
+  become: no
+  vars_files:
+      - vars.yaml
+
+  tasks:
+
+    - name: Remove stacks
+      shell: >
+            docker stack rm {{ item }}
+      with_items:
+      - "spark"
+      - "management"
+      run_once: true
+      ignore_errors: yes
+
+    - name: Remove overlay networks
+      shell: >
+            docker network rm {{ item }}
+      with_items:
+      - "{{ swarm_external_overlay_network }}"
+      run_once: true
+      ignore_errors: yes
+
+
+    - name: Force leaving Docker Swarm
+      shell: >
+            docker swarm leave -f
+      ignore_errors: yes
+
+    - name: Remove stack files form remote nodes
+      become: yes
+      file: "path={{ item }} state=absent"
+      with_items:
+        - "{{ stack_experiment_dir }}"
+
+    - name: Remove management volumes
+      shell: >
+            docker volume rm {{ item }}
+      with_items:
+      - "management_vol_gateway_certs"
+      - "management_vol_portainer"
+      run_once: true
+      ignore_errors: yes
+
+    - name: Drop memory caches
+      shell: >
+            sync; echo 3 > /proc/sys/vm/drop_caches
+      become: yes
+
+    - name: Clean swap
+      shell: >
+            swapoff -a; swapon -a
+      become: yes

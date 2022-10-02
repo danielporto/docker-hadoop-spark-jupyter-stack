@@ -1,0 +1,21 @@
+#!/bin/ansible-playbook
+---
+
+# define experiment specific variables  names --------------------------------------------------------------
+- name: Collect status information 
+  hosts: all
+  any_errors_fatal: true
+  gather_facts: no
+  vars_files:
+    - vars.yaml
+
+  tasks :   
+# Collect status information --------------------------------------------------------------------------------
+    - name: Save system info 
+      shell: uptime
+      register: uptstr
+      args:
+        executable: /bin/bash
+    - name: Print status
+      debug:
+        msg: "{{ uptstr.stdout }}"

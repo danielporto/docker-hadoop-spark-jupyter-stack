@@ -1,0 +1,53 @@
+#! /usr/local/bin/ansible-playbook
+# TODO CHECK GlusterFS health
+
+
+- hosts: swarm_manager
+  any_errors_fatal: true
+  gather_facts: no
+  become: no
+  vars_files:
+      - vars.yaml
+
+  tasks:
+    - name: Compute the swarm size
+      set_fact:
+        swarm_size: "{{ hostvars[inventory_hostname]['groups']['swarm_manager'] | union(hostvars[inventory_hostname]['groups']['swarm_workers']) | unique | length  }}"
+
+    - name: Compute the current size of the deployment
+      shell: docker node ls -q | wc -l
+      register: swarm_status
+
+    - name: Check if the swarm is ready for deploy
+      fail:
+        msg: "Swarm is not ready, run the playbook stack-network-deploy.yml first."
+      when: "not( swarm_size == swarm_status.stdout )"
+
+    - name: Ensures experiment stack dir exists
+      file:
+        path: "{{stack_experiment_dir}}"
+        state: directory
+        mode: u+rw,g+wx,o+rwx
+
+    - name: Deploy management stack file
+      template:
+        src: swarm-stack-management.j2
+        dest: "{{ stack_experiment_dir }}/swarm-stack-management.yml"
+
+    - name: Deploy spark stack file
+      template:
+        src: "swarm-stack-spark.j2"
+        dest: "{{ stack_experiment_dir }}/swarm-stack-spark.yml"
+
+    - name: Deploy env
+      template:
+        src: "swarm-env.j2"
+        dest: "{{ stack_experiment_dir }}/env"
+
+    - name: Start Management stack
+      shell: >
+            docker stack deploy -c {{ stack_experiment_dir }}/swarm-stack-management.yml management
+
+    - name: Start Spark stack
+      shell: >
+            docker stack deploy -c {{ stack_experiment_dir }}/swarm-stack-spark.yml spark

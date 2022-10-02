@@ -1,0 +1,51 @@
+## STATIC CONFIG (restart traefik to update)
+
+# shows you a log msg if a newer image tag can be used
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+
+# log default is ERROR, but WARN is more helpful
+log:
+  # level: WARN
+  # level: INFO
+  level: DEBUG
+  # filePath: "/var/logs/traefik/traefik.log"
+
+# enable dashboard on 8080 with NO AUTH
+api:
+  dashboard: true
+  insecure: false
+
+# enable ping so the `traefik healthcheck` works
+ping: {}
+
+# auto-proxy containers if they have proper labels
+# and also use this file for dynamic config (tls)
+providers:
+  providersThrottleDuration: 5s
+  docker:
+    exposedByDefault: false
+    watch: true
+    # endpoint: "unix:///var/run/docker.sock"
+    swarmMode: {{ .Env.TRAEFIK_SWARM_MODE }}
+
+  file:
+    fileName: /etc/traefik/dynamic.yml
+    watch: true
+
+# listen on 80/443, and redirect all 80 to 443 via 301
+entryPoints:
+  web:
+    address: :80
+    # comment out these lines if you don't want to redirect everything
+#    http:
+#      redirections:
+#        entryPoint:
+#          to: websecure
+#          scheme: https
+#          permanent: true
+  websecure:
+    address: :443
+

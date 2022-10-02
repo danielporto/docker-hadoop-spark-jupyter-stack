@@ -1,0 +1,91 @@
+version: '3.8'
+
+volumes:
+  vol_portainer:
+  vol_gateway_certs:
+
+networks:
+  {{ swarm_external_overlay_network }}:
+    external: true
+
+
+services:
+  traefik:
+    image: danielporto/pluribus:traefik_v2.6.1
+    build:
+      context: ./traefik
+      dockerfile: Dockerfile
+      args:
+        TRAEFIK_BASE: "v2.6.1"
+    restart: unless-stopped
+    networks:
+      - {{ swarm_external_overlay_network }}
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vol_gateway_certs:/certs
+    security_opt:
+      - no-new-privileges=true # https://docs.docker.com/engine/reference/run/#security-configuration      
+    env_file:
+      - ./env
+    environment:
+      - TRAEFIK_SWARM_MODE=true
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+  
+#----------------------------------------------------------------------------------
+# monitor service
+#----------------------------------------------------------------------------------
+  agent:
+    image: portainer/agent:2.15.0-alpine 
+    environment:
+      AGENT_CLUSTER_ADDR: tasks.agent
+      AGENT_PORT: 40091
+      # LOG_LEVEL: debug
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - {{ swarm_external_overlay_network }}
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.platform.os == linux]
+    env_file:
+      - ./env
+
+  # the following pointers are relevant for configuring portainer
+  # https://documentation.portainer.io/archive/1.23.2/configuration/
+  # https://stackoverflow.com/questions/42139605/how-do-you-manage-secret-values-with-docker-compose-v3-1
+  # https://github.com/portainer/portainer/issues/1506
+  # docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'password' | cut -d ":" -f 2
+  portainer:
+    image: portainer/portainer-ce:2.15.0-alpine
+    command: -H tcp://tasks.agent:40091 --tlsskipverify --admin-password="$$2y$$05$$RHexFs6Yw8763FQvtrv6dOw9z.TLdfp7myCBfDW6iu/iYipAqnM62"
+    volumes:
+      - vol_portainer:/data
+    env_file:
+      - ./env
+    networks:
+      - {{ swarm_external_overlay_network }}
+    ports:
+      - 9090:9000
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-portainer.loadbalancer.server.port=9000
+        - traefik.http.routers.to-portainer.rule=Host(`portainer.pluribus.vcap.me`)
+        # - traefik.http.routers.to-portainer.tls=true
+        # - traefik.http.routers.to-portainer.entrypoints=websecure
+        - traefik.http.routers.to-portainer.entrypoints=web

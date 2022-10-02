@@ -1,0 +1,269 @@
+version: '3.8'
+
+volumes:
+  vol_portainer:
+  vol_gateway_certs:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:
+
+
+
+networks:
+  net_traefik:
+    driver: bridge
+
+services:
+  traefik:
+    image: danielporto/pluribus:traefik_v2.6.1
+    build:
+      context: ./traefik
+      dockerfile: Dockerfile
+      args:
+        TRAEFIK_BASE: "v2.6.1"
+    restart: unless-stopped
+    container_name: traefik
+    networks:
+      - net_traefik
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vol_gateway_certs:/certs
+    security_opt:
+      - no-new-privileges=true # https://docs.docker.com/engine/reference/run/#security-configuration      
+    env_file:
+      - ./env
+    environment:
+      - TRAEFIK_SWARM_MODE=false
+  
+#----------------------------------------------------------------------------------
+# monitor service
+#----------------------------------------------------------------------------------
+  agent:
+    image: portainer/agent:2.15.0-alpine 
+    container_name: tasks.agent
+    environment:
+      AGENT_CLUSTER_ADDR: tasks.agent
+      AGENT_PORT: 40091
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    networks:
+      - net_traefik
+    env_file:
+      - ./env
+
+  # docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'password' | cut -d ":" -f 2
+  portainer:
+    image: portainer/portainer-ce:2.15.0-alpine
+    command: -H tcp://tasks.agent:40091 --tlsskipverify --admin-password='$$2y$$05$$RHexFs6Yw8763FQvtrv6dOw9z.TLdfp7myCBfDW6iu/iYipAqnM62'
+    restart: on-failure
+    volumes:
+      - vol_portainer:/data
+    env_file:
+      - ./env
+    container_name: portainer
+    networks:
+      - net_traefik
+    ports:
+      - 9090:9000
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-portainer.loadbalancer.server.port=9000
+      - traefik.http.routers.to-portainer.rule=Host(`portainer.pluribus.vcap.me`)
+      # - traefik.http.routers.to-portainer.tls=true
+      # - traefik.http.routers.to-portainer.entrypoints=websecure
+      - traefik.http.routers.to-portainer.entrypoints=web
+
+#----------------------------------------------------------------------------------
+# HDFS service
+#----------------------------------------------------------------------------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      - 9870:9870
+      - 9010:9000
+    networks:
+      - net_traefik
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    env_file:
+      - ./env
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-namenode.loadbalancer.server.port=9870
+      - traefik.http.routers.to-namenode.rule=Host(`namenode.pluribus.vcap.me`)
+      # - traefik.http.routers.to-namenode.tls=true
+      # - traefik.http.routers.to-namenode.entrypoints=websecure
+      - traefik.http.routers.to-namenode.entrypoints=web
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+    ports:
+      - 9864:9864
+    networks:
+      - net_traefik
+    env_file:
+      - ./env
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-datanode.loadbalancer.server.port=9864
+      - traefik.http.routers.to-datanode.rule=Host(`datanode.pluribus.vcap.me`)
+      # - traefik.http.routers.to-datanode.tls=true
+      # - traefik.http.routers.to-datanode.entrypoints=websecure
+      - traefik.http.routers.to-datanode.entrypoints=web
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+    env_file:
+      - ./env
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - ./env
+
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - ./env
+
+  presto-coordinator:
+    image: shawnzhu/prestodb:0.181
+    container_name: presto-coordinator
+    ports:
+      - 8089:8089
+    networks:
+      - net_traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-presto.loadbalancer.server.port=8089
+      - traefik.http.routers.to-presto.rule=Host(`presto.pluribus.vcap.me`)
+      # - traefik.http.routers.to-presto.tls=true
+      # - traefik.http.routers.to-presto.entrypoints=websecure
+      - traefik.http.routers.to-presto.entrypoints=web
+      
+
+#----------------------------------------------------------------------------------
+# SPARK service
+#----------------------------------------------------------------------------------
+
+#
+# Spark 
+#
+  spark-master:
+    image: bde2020/spark-master:3.2.1-hadoop3.2
+    container_name: spark-master
+    networks:
+      net_traefik:
+        aliases:
+          - spark-master
+    ports:
+      - 8080:8080
+      - 7077:7077
+    env_file:
+      - ./env    
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+
+    volumes:
+      - ./:/localdata
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-spark.loadbalancer.server.port=8080
+      - traefik.http.routers.to-spark.rule=Host(`spark.pluribus.vcap.me`)
+      # - traefik.http.routers.to-spark.tls=true
+      # - traefik.http.routers.to-spark.entrypoints=websecure
+      - traefik.http.routers.to-spark.entrypoints=web
+
+  spark-worker-1:
+    image: bde2020/spark-worker:3.2.1-hadoop3.2
+    container_name: spark-worker-1
+    depends_on:
+      - spark-master
+    # do not use aliases here. replication will make a mess with the server communication
+    networks:
+      net_traefik:
+    ports:
+      - 8081:8081
+    restart: on-failure
+    volumes:
+      - ./:/localdata
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-sparkworker.loadbalancer.server.port=8081
+      - traefik.http.routers.to-sparkworker.rule=Host(`sparkworker.pluribus.vcap.me`)
+      # - traefik.http.routers.to-sparkworker.tls=true
+      # - traefik.http.routers.to-sparkworker.entrypoints=websecure
+      - traefik.http.routers.to-sparkworker.entrypoints=web
+
+
+  jupyter:
+    image: jupyter/pyspark-notebook:spark-3.2.1
+    container_name: jupyter
+    networks:
+      net_traefik:
+        aliases:
+          - jupyter
+    restart: on-failure
+    ports:
+      - 10000:8888
+      - 4040:4040
+      - 4041:4041
+      - 4042:4042
+    volumes:
+      - .:/home/jovyan/work
+      - ./data:/gfs/data
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    env_file:
+      - ./env
+    command: "start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-jupyter.loadbalancer.server.port=8888
+      - traefik.http.routers.to-jupyter.rule=Host(`jupyter.pluribus.vcap.me`)
+      # - traefik.http.routers.to-jupyter.tls=true
+      # - traefik.http.routers.to-jupyter.entrypoints=websecure
+      - traefik.http.routers.to-jupyter.entrypoints=web
+

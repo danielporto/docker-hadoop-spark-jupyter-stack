@@ -1,0 +1,68 @@
+#! /usr/local/bin/ansible-playbook
+
+- hosts: gluster
+  become: no
+  gather_facts: no
+  any_errors_fatal: true
+    
+  vars_files:
+    - vars.yaml
+  
+  tasks:
+    - name: Validate Gluster number of bricks and replicas
+      fail: 
+        msg: "Gluster has invalid number of replicas: ({{groups.gluster | length}}). The cluster size must be proportional to {{ gluster_replicas }}. "
+      when: "not( (groups.gluster | length) % gluster_replicas == 0 )"
+      run_once: yes
+
+- hosts: gluster
+  become: yes
+  any_errors_fatal: true
+    
+  vars_files:
+    - vars.yaml
+
+  roles:
+    - geerlingguy.firewall
+    - geerlingguy.glusterfs
+
+  tasks:
+
+    - name: Ensure Gluster brick and mount directories exist.
+      file: "path={{ item }} state=directory mode=0775"
+      with_items:
+        - "{{ gluster_brick_dir }}"
+        - "{{ gluster_mount_dir }}"
+
+    - name: Ensure Rsync is installed (required for the synchronize module, to deploy the dataset)
+      apt: 
+        name: rsync
+        update_cache: yes
+
+# list peers: sudo gluster peer status
+# remove peers: sudo gluster peer detach IP
+# add peers: sudo gluster peer 
+    - name: Configure Gluster volume.
+      gluster_volume:
+        state: present
+        name: "{{ gluster_brick_name }}"
+        brick: "{{ gluster_brick_dir }}"
+        disperses: "{{gluster_replicas}}"
+        cluster: "{{ groups.gluster | join(',') }}"
+        host: "{{ inventory_hostname }}"
+        force: yes
+      run_once: true        
+
+    - name: Ensure Gluster volume is mounted.
+      mount:
+        name: "{{ gluster_mount_dir }}"
+        src: "{{ inventory_hostname }}:/{{ gluster_brick_name }}"
+        fstype: glusterfs
+        opts: "defaults,_netdev"
+        state: mounted
+
+    - name: Create the data dir inside Gluster
+      file: "path={{ item }} state=directory mode=0775"
+      with_items:
+        - "{{ gluster_mount_dir }}/pluribus"
+      

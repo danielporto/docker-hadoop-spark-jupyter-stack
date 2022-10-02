@@ -1,0 +1,90 @@
+version: '3.8'
+networks:
+  {{ swarm_external_overlay_network }}:
+    external: true
+
+services:
+  spark-master:
+    image: bde2020/spark-master:3.3.0-hadoop3.3
+    networks:
+      {{ swarm_external_overlay_network }}:
+        aliases:
+          - spark-master
+    ports:
+      - 8080:8080
+      - 7077:7077
+    env_file:
+      - ./env
+    volumes:
+      - {{ gluster_mount_dir }}:/gfs
+      - ./:/localdata
+    deploy:
+      replicas: 1
+      mode: replicated
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-spark.loadbalancer.server.port=8080
+        - traefik.http.routers.to-spark.rule=Host(`spark.{{ swarm_env_domain }}`)
+        # - traefik.http.routers.to-spark.tls=true
+        # - traefik.http.routers.to-spark.entrypoints=websecure
+        - traefik.http.routers.to-spark.entrypoints=web
+
+  spark-worker:
+    image: bde2020/spark-worker:3.3.0-hadoop3.3
+    networks:
+      # do not use aliases here. replication will make a mess with the server communication
+      {{ swarm_external_overlay_network }}:
+    # ports:
+    #   - 8081:8081
+    volumes:
+      - {{ gluster_mount_dir }}:/gfs
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+      - SPARK_EXECUTOR_MEMORY={{ spark_executor_memory }}
+    env_file:
+      - ./env
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+
+
+  jupyter:
+    image: jupyter/pyspark-notebook:spark-3.3.0
+    networks:
+      {{ swarm_external_overlay_network }}:
+        aliases:
+          - jupyter
+    ports:
+      - 10000:8888
+      - 4040:4040
+      - 4041:4041
+      - 4042:4042
+    volumes:
+      - .:/home/jovyan/work
+      - {{ gluster_mount_dir }}:/gfs
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    env_file:
+      - ./env
+    command: "start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''"
+    deploy:
+      replicas: 1
+      mode: replicated
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-jupyter.loadbalancer.server.port=8888
+        - traefik.http.routers.to-jupyter.rule=Host(`jupyter.{{ swarm_env_domain }}`)
+        # - traefik.http.routers.to-jupyter.tls=true
+        # - traefik.http.routers.to-jupyter.entrypoints=websecure
+        - traefik.http.routers.to-jupyter.entrypoints=web
