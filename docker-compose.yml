@@ -80,6 +80,31 @@ services:
       - traefik.http.routers.to-portainer.entrypoints=web
 
 #----------------------------------------------------------------------------------
+# light logviewer service
+#----------------------------------------------------------------------------------
+  dozzle:
+    image: amir20/dozzle:latest
+    command: --no-analytics
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOZZLE_LEVEL
+      - DOZZLE_TAILSIZE
+      - DOZZLE_AUTH
+    networks:
+      - net_traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=net_traefik  # required when container connects to more than one network
+      - traefik.http.services.to-dozzle.loadbalancer.server.port=8080
+      - traefik.http.routers.to-dozzle.rule=Host(`logs.${DOMAIN}`)
+      - traefik.http.routers.to-dozzle.tls=true
+      - traefik.http.routers.to-dozzle.entrypoints=websecure
+      - traefik.http.routers.to-dozzle.middlewares=to-dozzle-handler
+      - traefik.http.middlewares.to-dozzle-handler.chain.middlewares=to-dozzle-auth
+      - traefik.http.middlewares.to-dozzle-auth.basicauth.users=${DOZZLE_AUTH}
+
+#----------------------------------------------------------------------------------
 # HDFS service
 #----------------------------------------------------------------------------------
   namenode:

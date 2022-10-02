@@ -16,6 +16,9 @@ Run `docker network inspect` on the network (e.g. `docker-glusterfs-spark-jupter
 
 | Service          | Without Proxy                                     | With Proxy                        |
 |------------------|---------------------------------------------------|-----------------------------------|
+| Traefik dashboard| http://localhost | http://traefik.pluribus.vcap.me  |
+| Portainer        | http://localhost:9090                             | http://portainer.pluribus.vcap.me |
+| Logs/Dozzle      | http://localhost:9090                             | http://logs.pluribus.vcap.me |
 | Namenode         | http://localhost:9870 | http://namenode.pluribus.vcap.me  |
 | History server   | http://localhost:8188/applicationhistory          |                                   |
 | Datanode         | http://localhost:9864/                            |                                   |
@@ -23,9 +26,7 @@ Run `docker network inspect` on the network (e.g. `docker-glusterfs-spark-jupter
 | Resource manager | http://localhost:8088/                            |                                   |
 | Spark master     | http://localhost:8080/                            | http://spark.pluribus.vcap.me     |
 | Spark worker     | http://localhost:8081/                            |                                   |
-| Portainer        | http://localhost:9090                             | http://portainer.pluribus.vcap.me |
 | Jupyter          | http://localhost:10000                            | http://jupyter.pluribus.vcap.me   |
-| Proxy            |                                                   | http://traefik.pluribus.vcap.me   |
 
 ## Quick Start with Jupyter:
 Navigate to Jupyter website: http://jupyter.pluribus.vcap.me and create a new notebook.
