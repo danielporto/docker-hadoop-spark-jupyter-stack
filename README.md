@@ -1,40 +1,63 @@
-# Docker multi-container environment with Glusterfs, Spark and PySpark/Jupyter
+# Docker multi-container environment with Hadoop/HDFS, Spark and PySpark/Jupyter
 
-This is it: a Docker multi-container environment with GlusterFS, Spark and Jupyter. 
+This is it: a Docker multi-container environment with Hadoop/HDFS, Spark and Jupyter. 
+
+## Create the certificates required to access with https:
+go to certs folder and run the script:
+```
+bash generate-certs.sh
+```
 
 ## Quick Start local deployment
 
-To deploy an the Gluster-Spark-Jupyter cluster, run:
+To deploy an the HDFS-Spark-Jupyter cluster, run:
 ```
   docker-compose build
-  docker-compose up
+  docker-compose --env-file env up
 ```
 
-`docker-compose` creates a docker network that can be found by running `docker network list`, e.g. `docker-glusterfs-spark-jupter-stack_default`.
+`docker-compose` creates a docker network that can be found by running `docker network list`, e.g. `docker-hadoop-spark-jupter-stack_default`.
 
-Run `docker network inspect` on the network (e.g. `docker-glusterfs-spark-jupter-stack_default`) to find the IP the hadoop interfaces are published on. Access these interfaces with the following URLs:
+Run `docker network inspect` on the network (e.g. `docker-hadoop-spark-jupter-stack_default`) to find the IP the hadoop interfaces are published on. Access these interfaces with the following URLs:
 
 | Service          | Without Proxy                                     | With Proxy                        |
 |------------------|---------------------------------------------------|-----------------------------------|
-| Traefik dashboard| http://localhost | http://traefik.pluribus.vcap.me  |
-| Portainer        | http://localhost:9090                             | http://portainer.pluribus.vcap.me |
-| Logs/Dozzle      | http://localhost:9090                             | http://logs.pluribus.vcap.me |
-| Namenode         | http://localhost:9870 | http://namenode.pluribus.vcap.me  |
-| History server   | http://localhost:8188/applicationhistory          |                                   |
-| Datanode         | http://localhost:9864/                            |                                   |
-| Nodemanager      | http://localhost:8042/node                        |                                   |
-| Resource manager | http://localhost:8088/                            |                                   |
+| Traefik dashboard| http://localhost                                  | https://traefik.pluribus.vcap.me  |
+| Portainer        | http://localhost:9090                             | https://portainer.pluribus.vcap.me |
+| Logs/Dozzle      | http://localhost:9090                             | https://logs.pluribus.vcap.me     |
+| Namenode         | http://localhost:9870                             | https://namenode.pluribus.vcap.me |
+| History server   | http://localhost:8188/applicationhistory          | https://history.pluribus.vcap.me  |
+| Datanode         | http://localhost:9864/                            | https://datanode.pluribus.vcap.me |
+| Nodemanager      | http://localhost:8042/node                        | https://nodemanager.pluribus.vcap.me/node |
+| Resource manager | http://localhost:8088/                            | https://resources.pluribus.vcap.me |
 | Spark master     | http://localhost:8080/                            | http://spark.pluribus.vcap.me     |
-| Spark worker     | http://localhost:8081/                            |                                   |
+| Spark worker     | http://localhost:8081/                            | http://worker.pluribus.vcap.me    |
 | Jupyter          | http://localhost:10000                            | http://jupyter.pluribus.vcap.me   |
+
+## Preliminaries upload file to hdfs:
+
+Use the namenode as starting point to upload content to hfds:
+```
+ docker exec -it namenode bash
+```
+Then, create a directory on hfds where the dataset must be uploaded. 
+Create a HDFS directory /data/openbeer/breweries.
+```
+  hdfs dfs -mkdir -p /data/openbeer/breweries
+```
+
+Copy breweries.csv to HDFS:
+```
+  hdfs dfs -put /data/breweries.csv /data/openbeer/breweries/breweries.csv
+```
 
 ## Quick Start with Jupyter:
 Navigate to Jupyter website: http://jupyter.pluribus.vcap.me and create a new notebook.
 run:
 ```
 from pyspark.sql import SparkSession
-spark = SparkSession.builder.appName("Dataframe from csv in hdfs").getOrCreate()
-brewfile = spark.read.csv("/gfs/data/breweries.csv")
+spark = SparkSession.builder.master("spark://spark-master:7077").appName("Dataframe from csv in hdfs").getOrCreate()
+brewfile = spark.read.csv("hdfs://namenode:9000/data/openbeer/breweries/breweries.csv")
   
 brewfile.show()
 
@@ -102,7 +125,7 @@ SparkSession available as 'spark'.
 
 Load breweries.csv from DFS.
 ```
-  brewfile = spark.read.csv("/gfs/data/breweries.csv")
+  brewfile = spark.read.csv("hdfs://namenode:9000/data/openbeer/breweries/breweries.csv")
   
   brewfile.show()
 +----+--------------------+-------------+-----+---+
