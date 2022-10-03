@@ -6,26 +6,26 @@ http:
       service: api@internal
       rule: Host(`traefik.{{ .Env.DOMAIN }}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))
       entrypoints:
-#        - websecure
+        - websecure
         - web
-#      middlewares:
-#        - auth
-#      tls:
-#        domains:
-#          - main: "docker.localhost"
-#            sans:
-#              - "*.docker.localhost"
-#          - main: "{{ .Env.DOMAIN }}"
-#            sans:
-#              - "*.{{ .Env.DOMAIN }}"
+      middlewares:
+        - auth
+      tls:
+        domains:
+          - main: "docker.localhost"
+            sans:
+              - "*.docker.localhost"
+          - main: "{{ .Env.DOMAIN }}"
+            sans:
+              - "*.{{ .Env.DOMAIN }}"
   
-# middlewares:
-#    auth:
-#      basicAuth:
-#        users:
-#          - {{ .Env.TRAEFIK_USER }}:{{ .Env.TRAEFIK_PASSWORD_HASH }}
-  
-# tls:
-#   certificates:
-#     - certFile: '/certs/{{ .Env.DOMAIN }}/{{ .Env.DOMAIN }}.pem'
-#       keyFile: '/certs/{{ .Env.DOMAIN }}/{{ .Env.DOMAIN }}.pem'
+  middlewares:
+    auth:
+      basicAuth:
+        users:
+          - {{ .Env.TRAEFIK_USER }}:{{ .Env.TRAEFIK_PASSWORD_HASH }}
+
+tls:
+  certificates:
+    - certFile: '/certs/{{ .Env.DOMAIN }}/{{ .Env.DOMAIN }}.pem'
+      keyFile: '/certs/{{ .Env.DOMAIN }}/{{ .Env.DOMAIN }}.pem'

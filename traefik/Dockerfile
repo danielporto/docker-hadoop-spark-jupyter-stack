@@ -1,4 +1,3 @@
-ARG TRAEFIK_BASE=v2.6.1
 # build and install dockerize to the current proper architecture
 FROM golang:1.17.5-alpine3.15 AS dependencies
 RUN apk add --no-cache --upgrade git openssl
@@ -12,7 +11,7 @@ RUN set -ex; \
     go install
 
 
-FROM traefik:${TRAEFIK_BASE}
+FROM traefik:v2.8.1
 LABEL maintainer="daniel.porto@gmail.com"
 
 # install dockerize
