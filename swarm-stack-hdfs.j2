@@ -1,0 +1,181 @@
+version: '3.8'
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:
+
+
+
+networks:
+  {{ swarm_external_overlay_network }}:
+    external: true
+
+services:
+#----------------------------------------------------------------------------------
+# HDFS service
+#----------------------------------------------------------------------------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      - 9870:9870
+      - 9010:9000
+    networks:
+      {{ swarm_external_overlay_network }}:
+        aliases: 
+        - namenode.pluribus.vcap.me
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./data:/data
+    environment:
+      - CLUSTER_NAME=test
+      - CORE_CONF_fs_defaultFS=hdfs://namenode.pluribus.vcap.me:9000
+    env_file:
+      - ./env
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-namenode.loadbalancer.server.port=9870
+        - traefik.http.routers.to-namenode.rule=Host(`namenode.pluribus.vcap.me`)
+        - traefik.http.routers.to-namenode.tls=true
+        - traefik.http.routers.to-namenode.entrypoints=websecure
+        # - traefik.http.routers.to-namenode.entrypoints=web
+
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode.pluribus.vcap.me:9870"
+      CORE_CONF_fs_defaultFS: hdfs://namenode.pluribus.vcap.me:9000
+    ports:
+      - 9864:9864
+    networks:
+      - {{ swarm_external_overlay_network }}
+    env_file:
+      - ./env
+    deploy:
+      # mode global will deploy one datanode per docker swarm node
+      mode: global
+      restart_policy:
+        condition: on-failure
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-datanode.loadbalancer.server.port=9864
+        - traefik.http.routers.to-datanode.rule=Host(`datanode.pluribus.vcap.me`)
+        - traefik.http.routers.to-datanode.tls=true
+        - traefik.http.routers.to-datanode.entrypoints=websecure
+        # - traefik.http.routers.to-datanode.entrypoints=web
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode.pluribus.vcap.me:9000 namenode.pluribus.vcap.me:9870 datanode.pluribus.vcap.me:9864"
+    env_file:
+      - ./env
+    ports:
+      - 8088:8088
+    networks:
+      - {{ swarm_external_overlay_network }}
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-resources.loadbalancer.server.port=8088
+        - traefik.http.routers.to-resources.rule=Host(`resources.pluribus.vcap.me`)
+        - traefik.http.routers.to-resources.tls=true
+        - traefik.http.routers.to-resources.entrypoints=websecure
+        # - traefik.http.routers.to-resources.entrypoints=web
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode.pluribus.vcap.me:9000 namenode.pluribus.vcap.me:9870 datanode.pluribus.vcap.me:9864 resourcemanager.pluribus.vcap.me:8088"
+    env_file:
+      - ./env
+    networks:
+      - {{ swarm_external_overlay_network }}
+    ports:
+      - 8042:8042
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-nodemanager.loadbalancer.server.port=8042
+        - traefik.http.routers.to-nodemanager.rule=Host(`nodemanager.pluribus.vcap.me`)
+        - traefik.http.routers.to-nodemanager.tls=true
+        - traefik.http.routers.to-nodemanager.entrypoints=websecure
+        # - traefik.http.routers.to-nodemanager.entrypoints=web
+
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    restart: always
+    environment:
+      SERVICE_PRECONDITION: "namenode.pluribus.vcap.me:9000 namenode.pluribus.vcap.me:9870 datanode.pluribus.vcap.me:9864 resourcemanager.pluribus.vcap.me:8088"
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - ./env
+    ports:
+      - 8188:8188
+    networks:
+      - {{ swarm_external_overlay_network }}
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-history.loadbalancer.server.port=8188
+        - traefik.http.routers.to-history.rule=Host(`history.pluribus.vcap.me`)
+        - traefik.http.routers.to-history.tls=true
+        - traefik.http.routers.to-history.entrypoints=websecure
+        # - traefik.http.routers.to-history.entrypoints=web
+
+  presto-coordinator:
+    image: shawnzhu/prestodb:0.181
+    container_name: presto-coordinator
+    ports:
+      - 8089:8089
+    networks:
+      - {{ swarm_external_overlay_network }}
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network={{ swarm_external_overlay_network }}  # required when container connects to more than one network
+        - traefik.http.services.to-presto.loadbalancer.server.port=8089
+        - traefik.http.routers.to-presto.rule=Host(`presto.pluribus.vcap.me`)
+        - traefik.http.routers.to-presto.tls=true
+        - traefik.http.routers.to-presto.entrypoints=websecure
+        # - traefik.http.routers.to-presto.entrypoints=web
+      

@@ -11,15 +11,20 @@ networks:
 
 services:
   traefik:
-    image: danielporto/pluribus:traefik_v2.6.1
+    image: danielporto/pluribus:traefik_v2.8.1
     build:
       context: ./traefik
       dockerfile: Dockerfile
       args:
-        TRAEFIK_BASE: "v2.6.1"
+        TRAEFIK_BASE: "v2.8.1"
     restart: unless-stopped
     networks:
-      - {{ swarm_external_overlay_network }}
+      {{ swarm_external_overlay_network }}:
+        aliases:
+          - namenode.pluribus.vcap.me
+          - datanode.pluribus.vcap.me
+          - resourcemanager.pluribus.vcap.me
+
     ports:
       - 80:80
       - 443:443

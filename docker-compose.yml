@@ -3,6 +3,7 @@ version: '3.8'
 volumes:
   vol_portainer:
   vol_gateway_certs:
+
   hadoop_namenode:
   hadoop_datanode:
   hadoop_historyserver:

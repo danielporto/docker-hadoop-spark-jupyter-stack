@@ -1,8 +1,6 @@
 #! /usr/local/bin/ansible-playbook
 
-# - import_playbook: glusterfs-provision.yml
-
-- hosts: gluster
+- hosts: hdfs
   become: yes
   gather_facts: no
   any_errors_fatal: true
@@ -11,18 +9,31 @@
     - vars.yaml
 
   tasks:
-    - name: Check filesystem
-      run_once: yes
-      ansible.builtin.stat:
-        path: "{{ gluster_dataset_path }}"
-      register: uploaded
+    - name: Ensures experiment stack dir exists
+      file:
+        path: "{{stack_experiment_dir}}"
+        state: directory
+        mode: u+rw,g+wx,o+rwx
 
-    - name: Upload dataset to GFS
-      ansible.builtin.copy:
-        src: "{{ dataset_folder }}/{{ item }}"
-        remote_src: yes
-        dest: "{{ gluster_dataset_path }}"
-      run_once: yes
-      when: not uploaded.stat.exists
-      with_items:
-        - "{{ dataset_files }}"
+    - name: Deploy HDFS stack file
+      template:
+        src: swarm-stack-hdfs.j2
+        dest: "{{ stack_experiment_dir }}/swarm-stack-hdfs.yml"
+
+
+
+    # - name: Check filesystem
+    #   run_once: yes
+    #   ansible.builtin.stat:
+    #     path: "{{ gluster_dataset_path }}"
+    #   register: uploaded
+
+    # - name: Upload dataset to GFS
+    #   ansible.builtin.copy:
+    #     src: "{{ dataset_folder }}/{{ item }}"
+    #     remote_src: yes
+    #     dest: "{{ gluster_dataset_path }}"
+    #   run_once: yes
+    #   when: not uploaded.stat.exists
+    #   with_items:
+    #     - "{{ dataset_files }}"

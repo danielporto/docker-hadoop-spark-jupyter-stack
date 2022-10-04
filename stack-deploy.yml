@@ -44,10 +44,28 @@
         src: "swarm-env.j2"
         dest: "{{ stack_experiment_dir }}/env"
 
+
+    - name: Build proxy container
+      run_once: yes
+      delegate_to: 127.0.0.1
+      shell: |
+            docker-compose build
+            docker save danielporto/pluribus:traefik_v2.8.1 -o /tmp/traefik.tar
+    
+    - name: Deploy proxy container to remote nodes
+      ansible.builtin.copy:
+        src: /tmp/traefik.tar
+        dest: /tmp/traefik.tar
+
+    - name: Load proxy container
+      shell: |
+            docker load -i /tmp/traefik.tar
+
+
     - name: Start Management stack
       shell: >
             docker stack deploy -c {{ stack_experiment_dir }}/swarm-stack-management.yml management
 
-    - name: Start Spark stack
-      shell: >
-            docker stack deploy -c {{ stack_experiment_dir }}/swarm-stack-spark.yml spark
+    # - name: Start Spark stack
+    #   shell: >
+    #         docker stack deploy -c {{ stack_experiment_dir }}/swarm-stack-spark.yml spark
